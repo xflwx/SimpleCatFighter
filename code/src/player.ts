@@ -50,6 +50,16 @@ class Player {
     grouded: Boolean = false;
     inputBuffer: InputBuffer = new InputBuffer();
 
+    // Dash properties
+    canDash: boolean = true;
+    dashCooldownTime: number = 1000; // milliseconds
+    dashDurationTime: number = 150;  // milliseconds
+    dashSpeedValue: number = 350;    // pixels per second
+    isDashing: boolean = false;
+    dashTimerValue: number = 0;      // milliseconds
+    originalGravity: number = 0;    // To store gravity before dash
+
+
     ready: Boolean = false;
 
     hitboxes: Map<string, BoxCollider> = new Map();
@@ -149,6 +159,29 @@ class Player {
     }
 
     moves(){
+        // Dash logic
+        if (this.isDashing) {
+            // Player is currently dashing, no other moves allowed
+            return;
+        }
+
+        if (this.inputBuffer.c && this.canDash) {
+            this.isDashing = true;
+            this.canDash = false;
+            this.dashTimerValue = 0;
+            this.originalGravity = this.physics.gravity; // Store original gravity
+            this.physics.gravity = 0; // Disable gravity during dash
+            this.physics.velocity.y = 0; // Stop vertical movement
+
+            // Optional: Play dash animation here
+            // this.animator.play('dash_animation_name');
+
+            setTimeout(() => {
+                this.canDash = true;
+            }, this.dashCooldownTime);
+            return; // Dash action taken, skip other moves for this frame
+        }
+
         if(this.charging){
             this.chargingTime += 10;
             if(!this.inputBuffer.y){
@@ -212,6 +245,26 @@ class Player {
     }
 
     update(dt: number){
+        // Convert dt from milliseconds to seconds for speed calculations
+        const dtSeconds = dt / 1000;
+
+        if (this.isDashing) {
+            this.dashTimerValue += dt;
+            const dashDistance = this.dashSpeedValue * dtSeconds;
+
+            this.physics.velocity.x = this.flipx ? -this.dashSpeedValue : this.dashSpeedValue;
+
+            if (this.dashTimerValue >= this.dashDurationTime) {
+                this.isDashing = false;
+                this.physics.gravity = this.originalGravity; // Restore gravity
+                this.physics.velocity.x = 0; // Stop horizontal dash movement
+                // Optional: Revert to idle animation
+                // if (this.animator.currentAnimationName === 'dash_animation_name') {
+                //     this.animator.play('idle');
+                // }
+            }
+        }
+
         if(this.health <= 0 ){
             if(this.animator.currentAnimationName != 'die'){
                 this.animator.play('die');
@@ -234,8 +287,12 @@ class Player {
             }
         }
         this.fireballs  = this.fireballs.filter((_, index)=>{ return !indices_to_delete.includes(index)});
-        this.moves();
-        this.physics.update(dt);
+
+        if (!this.isDashing) { // Process other moves only if not dashing
+            this.moves();
+        }
+
+        this.physics.update(dt); // Physics update happens regardless (e.g. for gravity restoration)
     }
 }
 
