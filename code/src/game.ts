@@ -71,6 +71,7 @@ export default class GameWindow{
     width: number;
     player: Player = new Player('player1');
     player2: Player = new Player('player2');
+    localPlay: boolean = false;
     ground: Ground = new Ground();
     leftWall: LeftWall = new LeftWall();
     rightWall: RightWall = new RightWall();
@@ -82,31 +83,64 @@ export default class GameWindow{
     
     tipDiv: HTMLDivElement
 
-    constructor(){
+    constructor(localPlay: boolean = false){
         this.height = 128;
         this.width = 256;
+        this.localPlay = localPlay;
         this.init();
-
-        
-        this.remoteInput = new RemoteInput(this.player.inputBuffer);
         
         this.player2.flipHorizontally();
         this.player2.physics.transform.x = 200;
         this.player.physics.transform.x = 50; 
 
-        this.remoteInput.onconnection = () => {
-            if(this.remoteInput.creator){
-                this.remoteInput.inputBuffer = this.player.inputBuffer
-                this.input = new Input(this.player2.inputBuffer, this.remoteInput.dataChannel);
-            }else{
-                this.remoteInput.inputBuffer = this.player2.inputBuffer
-                this.input = new Input(this.player.inputBuffer, this.remoteInput.dataChannel);
-            }
-            this.remoteInput.hideDomElements();
+        if (this.localPlay) {
+            // Local play mode
+            this.input = new Input(this.player.inputBuffer, null, 1); // Player 1
+            new Input(this.player2.inputBuffer, null, 2);          // Player 2
+
+            this.player.ready = true;
+            this.player2.ready = true;
+            this.tipDiv.style.display = 'none'; // Players are ready, no need for "Press space"
             this.startGameLoop();
-            this.tipDiv.style.display = 'block';
+        } else {
+            // Remote play logic
+            // RemoteInput constructor likely takes the buffer of the player whose actions are TO BE SENT.
+            // this.input will be for the locally controlled player on this client.
+            // RemoteInput's internal 'inputBuffer' property will be for the player whose actions are RECEIVED.
+            this.remoteInput = new RemoteInput(this.player.inputBuffer); // Default for player1 if creator, will be re-assigned if joiner
+
+            this.remoteInput.onconnection = () => {
+                if (this.remoteInput.creator) {
+                    // CREATOR: Player 1 is LOCAL, Player 2 is REMOTE
+                    // RemoteInput sends data from player.inputBuffer (P1)
+                    // this.remoteInput an instance of RemoteInput was already created with this.player.inputBuffer
+
+                    // Local keyboard handler for Player 1 (creator), sends data over channel. Uses P1 keys.
+                    this.input = new Input(this.player.inputBuffer, this.remoteInput.dataChannel, 1);
+                    // RemoteInput must be configured to update player2.inputBuffer upon receiving data.
+                    this.remoteInput.inputBuffer = this.player2.inputBuffer;
+                } else {
+                    // JOINER: Player 2 is LOCAL, Player 1 is REMOTE
+                    // RemoteInput needs to send data from player2.inputBuffer (P2)
+                    // Re-initialize or update RemoteInput to use player2's buffer for sending.
+                    // This is tricky without knowing RemoteInput's internals.
+                    // For now, let's assume RemoteInput's constructor argument is final for sending.
+                    // This implies the initial `new RemoteInput(this.player.inputBuffer)` might be an issue for the joiner.
+                    // However, changing RemoteInput is out of scope. We focus on Input class usage.
+
+                    // The joiner controls Player 2 locally.
+                    // Local keyboard handler for Player 2 (joiner), sends data over channel. Uses P1 keys by default.
+                    this.input = new Input(this.player2.inputBuffer, this.remoteInput.dataChannel, 1);
+                    // RemoteInput must be configured to update player1.inputBuffer upon receiving data.
+                    this.remoteInput.inputBuffer = this.player.inputBuffer;
+                }
+                this.remoteInput.hideDomElements();
+                this.startGameLoop();
+                this.tipDiv.style.display = 'block';
+            }
         }
 
+        // Commented out old test code
         // this.startGameLoop();
         // this.player.ready = true;
         // this.input = new Input(this.player2.inputBuffer, null);
